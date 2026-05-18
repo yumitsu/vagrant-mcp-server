@@ -619,7 +619,7 @@ end`
 		}
 
 		vmName := "test-register-vm"
-		if err := manager.RegisterExistingVM(ctx, vmName, fixture.ProjectPath); err != nil {
+		if err := manager.RegisterExistingVM(ctx, vmName, fixture.ProjectPath, ""); err != nil {
 			t.Fatalf("RegisterExistingVM failed: %v", err)
 		}
 
@@ -638,7 +638,7 @@ end`
 			t.Fatalf("Failed to create directory: %v", err)
 		}
 
-		err := manager.RegisterExistingVM(ctx, "test-no-vf", emptyDir)
+		err := manager.RegisterExistingVM(ctx, "test-no-vf", emptyDir, "")
 		if err == nil {
 			t.Error("Expected error when no Vagrantfile exists")
 		}

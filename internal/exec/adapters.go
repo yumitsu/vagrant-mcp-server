@@ -23,8 +23,8 @@ type VMManagerAdapter struct {
 func (a *VMManagerAdapter) CreateVM(ctx context.Context, name, projectPath string, config core.VMConfig) error {
 	return a.Real.CreateVM(ctx, name, projectPath, config)
 }
-func (a *VMManagerAdapter) RegisterExistingVM(ctx context.Context, name, projectPath string) error {
-	return a.Real.RegisterExistingVM(ctx, name, projectPath)
+func (a *VMManagerAdapter) RegisterExistingVM(ctx context.Context, name, projectPath string, vagrantVMName string) error {
+	return a.Real.RegisterExistingVM(ctx, name, projectPath, vagrantVMName)
 }
 func (a *VMManagerAdapter) StartVM(ctx context.Context, name string) error {
 	return a.Real.StartVM(ctx, name)

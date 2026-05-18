@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/rs/zerolog/log"
 	"github.com/vagrant-mcp/server/internal/cmdexec"
@@ -89,7 +90,7 @@ func (m *Manager) CreateVM(ctx context.Context, name string, projectPath string,
 }
 
 // RegisterExistingVM registers a VM from an existing Vagrantfile in the project directory.
-func (m *Manager) RegisterExistingVM(ctx context.Context, name string, projectPath string) error {
+func (m *Manager) RegisterExistingVM(ctx context.Context, name string, projectPath string, vagrantVMName string) error {
 	existingVagrantfile := filepath.Join(projectPath, "Vagrantfile")
 	if _, err := os.Stat(existingVagrantfile); os.IsNotExist(err) {
 		return errors.NotFound("Vagrantfile", existingVagrantfile)
@@ -100,6 +101,7 @@ func (m *Manager) RegisterExistingVM(ctx context.Context, name string, projectPa
 		ProjectPath:     projectPath,
 		VagrantfilePath: existingVagrantfile,
 		Provider:        m.provider,
+		VagrantVMName:   vagrantVMName,
 	}
 	return m.registerFromExistingVagrantfile(name, projectPath, existingVagrantfile, config)
 }
@@ -124,9 +126,7 @@ func (m *Manager) registerFromExistingVagrantfile(name string, projectPath strin
 
 // StartVM starts the specified VM
 func (m *Manager) StartVM(ctx context.Context, name string) error {
-	vmDir := m.getVMDir(name)
-	cmd := exec.CommandContext(ctx, "vagrant", "up")
-	cmd.Dir = vmDir
+	cmd := m.vagrantCmd(ctx, name, "up")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return errors.Wrap(err, errors.CodeOperationFailed, fmt.Sprintf("failed to start VM: %s", output))
@@ -137,9 +137,7 @@ func (m *Manager) StartVM(ctx context.Context, name string) error {
 
 // StopVM stops the specified VM
 func (m *Manager) StopVM(ctx context.Context, name string) error {
-	vmDir := m.getVMDir(name)
-	cmd := exec.CommandContext(ctx, "vagrant", "halt")
-	cmd.Dir = vmDir
+	cmd := m.vagrantCmd(ctx, name, "halt")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return errors.Wrap(err, errors.CodeOperationFailed, fmt.Sprintf("failed to stop VM: %s", output))
@@ -157,8 +155,7 @@ func (m *Manager) DestroyVM(ctx context.Context, name string) error {
 	config, configErr := m.loadVMConfig(name)
 	isExistingVagrantfile := configErr == nil && config.VagrantfilePath != ""
 
-	cmd := exec.CommandContext(ctx, "vagrant", "destroy", "-f")
-	cmd.Dir = vmDir
+	cmd := m.vagrantCmd(ctx, name, "destroy", "-f")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Error().Str("name", name).Err(err).Str("output", string(output)).Msg("Failed to destroy VM")
@@ -186,8 +183,7 @@ func (m *Manager) GetVMState(ctx context.Context, name string) (core.VMState, er
 	if _, err := os.Stat(vmDir); os.IsNotExist(err) {
 		return core.NotCreated, nil
 	}
-	cmd := exec.CommandContext(ctx, "vagrant", "status", "--machine-readable")
-	cmd.Dir = vmDir
+	cmd := m.vagrantCmd(ctx, name, "status", "--machine-readable")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return core.Unknown, errors.OperationFailed("get VM status", err)
@@ -260,6 +256,104 @@ func (m *Manager) loadVMConfig(name string) (core.VMConfig, error) {
 		return core.VMConfig{}, err
 	}
 	return config, nil
+}
+
+// vagrantCmd returns a vagrant command scoped to the specific VM in multi-VM Vagrantfiles.
+// If VagrantVMName isn't explicitly set, auto-detects the first VM from vagrant status.
+// The VM name is inserted right after the subcommand (e.g. "vagrant up bridge", "vagrant ssh-config bridge").
+func (m *Manager) vagrantCmd(ctx context.Context, mcpName string, args ...string) *exec.Cmd {
+	vmName := m.resolveVagrantVMName(ctx, mcpName)
+	if vmName != "" {
+		// Insert VM name after the subcommand (args[0]) and before any flags
+		insertAt := 1
+		if insertAt > len(args) {
+			insertAt = len(args)
+		}
+		args = append(args[:insertAt], append([]string{vmName}, args[insertAt:]...)...)
+		log.Debug().Str("vm", vmName).Strs("args", args).Msg("Scoped vagrant command to specific VM")
+	}
+	cmd := exec.CommandContext(ctx, "vagrant", args...)
+	cmd.Dir = m.getVMDir(mcpName)
+	return cmd
+}
+
+// resolveVagrantVMName determines which VM name to use for vagrant commands.
+// Returns the explicit VagrantVMName from config, or auto-detects from vagrant status.
+func (m *Manager) resolveVagrantVMName(ctx context.Context, mcpName string) string {
+	config, err := m.loadVMConfig(mcpName)
+	if err != nil {
+		return ""
+	}
+	if config.VagrantVMName != "" {
+		return config.VagrantVMName
+	}
+	// Only auto-detect for existing Vagrantfiles (multi-VM detection)
+	if config.VagrantfilePath == "" {
+		return ""
+	}
+
+	// Auto-detect VM names from vagrant status
+	vmDir := filepath.Dir(config.VagrantfilePath)
+	cmd := exec.CommandContext(ctx, "vagrant", "status", "--machine-readable")
+	cmd.Dir = vmDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return ""
+	}
+
+	// Parse machine-readable output: lines are "timestamp,vm-name,category,data"
+	// Collect all VM names, and check if the MCP name matches one of them
+	var vmNames []string
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		parts := strings.Split(line, ",")
+		if len(parts) >= 3 && parts[2] == "state" {
+			vmName := parts[1]
+			if vmName != "" {
+				vmNames = append(vmNames, vmName)
+			}
+		}
+	}
+
+	if len(vmNames) == 0 {
+		return ""
+	}
+
+	// If there's only one VM, use it
+	if len(vmNames) == 1 {
+		config.VagrantVMName = vmNames[0]
+		m.saveVMConfig(mcpName, config)
+		log.Info().Str("vm", vmNames[0]).Msg("Auto-detected single VM from Vagrantfile")
+		return vmNames[0]
+	}
+
+	// Multi-VM: check if the MCP name matches one of the VM names
+	for _, vmName := range vmNames {
+		if vmName == mcpName {
+			config.VagrantVMName = vmName
+			m.saveVMConfig(mcpName, config)
+			log.Info().Str("vm", vmName).Msg("Matched MCP name to VM name in Vagrantfile")
+			return vmName
+		}
+	}
+
+	// Also check if MCP name ends with the VM name (handles prefixes like "test-", "vpn-")
+	for _, vmName := range vmNames {
+		if strings.HasSuffix(mcpName, "-"+vmName) || strings.HasSuffix(mcpName, "_"+vmName) {
+			config.VagrantVMName = vmName
+			m.saveVMConfig(mcpName, config)
+			log.Info().Str("vm", vmName).Str("mcp_name", mcpName).
+				Msg("Matched MCP name suffix to VM name in Vagrantfile")
+			return vmName
+		}
+	}
+
+	// No match: log a warning and use the first VM
+	log.Warn().Str("mcp_name", mcpName).Strs("available_vms", vmNames).
+		Msg("MCP name doesn't match any VM in Vagrantfile. Use vagrant_vm_name parameter. Falling back to first VM.")
+	config.VagrantVMName = vmNames[0]
+	m.saveVMConfig(mcpName, config)
+	return vmNames[0]
 }
 
 // saveVMConfig saves the VM configuration to a file
@@ -603,9 +697,7 @@ func (m *Manager) SyncFromVM(name, source, target string) error {
 
 // GetSSHConfig retrieves the SSH configuration for the VM using 'vagrant ssh-config'
 func (m *Manager) GetSSHConfig(ctx context.Context, name string) (map[string]string, error) {
-	vmDir := m.getVMDir(name)
-	cmd := exec.CommandContext(ctx, "vagrant", "ssh-config")
-	cmd.Dir = vmDir
+	cmd := m.vagrantCmd(ctx, name, "ssh-config")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get SSH config: %w, output: %s", err, string(output))

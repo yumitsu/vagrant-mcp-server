@@ -256,25 +256,30 @@ func RegisterVMTools(srv *server.MCPServer, vmManager core.VMManager, syncEngine
 
 	// Use project VM tool - register a VM from an existing Vagrantfile in the project directory
 	type UseProjectVMArgs struct {
-		Name        string `json:"name"`
-		ProjectPath string `json:"project_path"`
+		Name          string `json:"name"`
+		ProjectPath   string `json:"project_path"`
+		VagrantVMName string `json:"vagrant_vm_name"`
 	}
 	useProjectVMTool := mcp.NewTool("use_project_vm",
 		mcp.WithDescription("Register and manage a VM from an existing Vagrantfile in the project directory. "+
 			"Use this when the project already has a Vagrantfile for provisioning VMs. "+
-			"The MCP server will use the existing Vagrantfile instead of generating a new one."),
+			"The MCP server will use the existing Vagrantfile instead of generating a new one. "+
+			"For multi-VM Vagrantfiles, specify vagrant_vm_name to target a specific VM."),
 		mcp.WithString("name",
 			mcp.Required(),
 			mcp.Description("Name to identify this VM in MCP operations")),
 		mcp.WithString("project_path",
 			mcp.Required(),
 			mcp.Description("Path to the project directory containing the Vagrantfile")),
+		mcp.WithString("vagrant_vm_name",
+			mcp.Description("Name of the VM inside the Vagrantfile (required for multi-VM Vagrantfiles). "+
+				"Omit for single-VM Vagrantfiles.")),
 	)
 	mcp_pkg.RegisterTypedTool(srv, useProjectVMTool, func(ctx context.Context, request mcp.CallToolRequest, args UseProjectVMArgs) (*mcp.CallToolResult, error) {
 		if args.Name == "" || args.ProjectPath == "" {
 			return mcp.NewToolResultError("Missing required parameter: name or project_path"), nil
 		}
-		if err := vmManager.RegisterExistingVM(ctx, args.Name, args.ProjectPath); err != nil {
+		if err := vmManager.RegisterExistingVM(ctx, args.Name, args.ProjectPath, args.VagrantVMName); err != nil {
 			return mcp.NewToolResultErrorf("Failed to register project VM: %v", err), nil
 		}
 		response := map[string]interface{}{
@@ -282,6 +287,7 @@ func RegisterVMTools(srv *server.MCPServer, vmManager core.VMManager, syncEngine
 			"project_path":        args.ProjectPath,
 			"status":              "registered",
 			"using_existing_vagrantfile": true,
+				"vagrant_vm_name":                args.VagrantVMName,
 			"timestamp":           time.Now().Format(time.RFC3339),
 		}
 		jsonResponse, err := json.Marshal(response)

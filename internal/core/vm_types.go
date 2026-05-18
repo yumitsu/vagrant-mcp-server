@@ -25,6 +25,7 @@ type VMConfig struct {
 	Environment         []string `json:"environment,omitempty"`
 	Provisioners        []string `json:"provisioners,omitempty"`
 	VagrantfilePath     string   `json:"vagrantfile_path,omitempty"`
+	VagrantVMName       string   `json:"vagrant_vm_name,omitempty"`
 }
 
 // UploadOptions contains options for uploading files to a VM

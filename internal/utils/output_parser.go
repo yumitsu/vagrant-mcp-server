@@ -32,14 +32,26 @@ func (p *OutputParser) ParseSSHConfig(output string) (map[string]string, error) 
 	return p.parsers["ssh_config"](output)
 }
 
-// parseSSHConfig parses SSH config format (key value pairs separated by spaces)
+// parseSSHConfig parses SSH config format (key value pairs separated by spaces).
+// Handles multi-host output by only parsing the first Host block.
+// If no Host blocks are found, parses all lines (single-VM output).
 func (p *OutputParser) parseSSHConfig(output string) (map[string]string, error) {
 	config := make(map[string]string)
 	lines := strings.Split(output, "\n")
+	foundHost := false
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
+			continue
+		}
+
+		// Detect Host blocks - "Host <name>" lines start a new block
+		if strings.HasPrefix(line, "Host ") {
+			if foundHost {
+				break
+			}
+			foundHost = true
 			continue
 		}
 

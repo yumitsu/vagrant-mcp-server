@@ -12,7 +12,7 @@ type VMManager interface {
 	CreateVM(ctx context.Context, name string, projectPath string, config VMConfig) error
 
 	// RegisterExistingVM registers a VM from an existing Vagrantfile in the project directory
-	RegisterExistingVM(ctx context.Context, name string, projectPath string) error
+	RegisterExistingVM(ctx context.Context, name string, projectPath string, vagrantVMName string) error
 
 	// StartVM starts an existing VM
 	StartVM(ctx context.Context, name string) error

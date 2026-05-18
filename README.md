@@ -150,6 +150,46 @@ MCP_TRANSPORT=sse MCP_PORT=8080 vagrant-mcp-server
 
 Then connect MCP clients to `http://localhost:8080/sse`.
 
+### Hermes Agent
+
+[Hermes Agent](https://github.com/NousResearch/hermes-agent) uses `~/.hermes/config.yaml` for MCP configuration. Add the Vagrant server under `mcp_servers`:
+
+```yaml
+mcp_servers:
+  vagrant:
+    command: "/usr/local/bin/vagrant-mcp-server"
+    env:
+      VAGRANT_DEFAULT_PROVIDER: "libvirt"
+      LOG_LEVEL: "info"
+```
+
+Or use the CLI:
+
+```bash
+hermes mcp add vagrant --command /usr/local/bin/vagrant-mcp-server --env VAGRANT_DEFAULT_PROVIDER=libvirt
+```
+
+To whitelist only the tools you want Hermes to see:
+
+```yaml
+mcp_servers:
+  vagrant:
+    command: "/usr/local/bin/vagrant-mcp-server"
+    env:
+      VAGRANT_DEFAULT_PROVIDER: "libvirt"
+    tools:
+      include:
+        - use_project_vm
+        - ensure_dev_vm
+        - get_vm_status
+        - exec_in_vm
+        - exec_with_sync
+      prompts: false
+      resources: false
+```
+
+After saving, reload in a running session with `/reload-mcp`, or restart Hermes. Tools will be available as `mcp_vagrant_<tool_name>` (e.g. `mcp_vagrant_ensure_dev_vm`).
+
 ## How to Use (Agent Guide)
 
 ### Quick Setup via Agentic Prompt
@@ -241,6 +281,29 @@ Add the Vagrant MCP Server to VS Code's MCP configuration.
 
 Replace `libvirt` with your actual provider (`virtualbox`, `vmware_desktop`, `hyperv`) if different.
 
+**For Hermes Agent**, use this prompt:
+
+```
+Add the Vagrant MCP Server to Hermes Agent's configuration.
+
+1. Build the server:
+   git clone https://github.com/yumitsu/vagrant-mcp-server.git /tmp/vagrant-mcp-server
+   cd /tmp/vagrant-mcp-server && make build
+   cp bin/vagrant-mcp-server ~/.local/bin/vagrant-mcp-server
+
+2. Add to ~/.hermes/config.yaml under mcp_servers:
+   vagrant:
+     command: "<HOME>/.local/bin/vagrant-mcp-server"
+     env:
+       VAGRANT_DEFAULT_PROVIDER: "libvirt"
+       LOG_LEVEL: "info"
+
+3. Run /reload-mcp or restart Hermes.
+
+4. Verify by asking: "Which MCP-backed tools are available right now?"
+   You should see mcp_vagrant_* tools listed.
+```
+
 ### Decision Flow: Which Tool to Use
 
 ```
@@ -260,8 +323,22 @@ Use this first when the project already has a `Vagrantfile`.
 |-----------|----------|-------------|
 | `name` | Yes | Identifier for this VM in MCP operations |
 | `project_path` | Yes | Absolute path to the directory containing the Vagrantfile |
+| `vagrant_vm_name` | No | Name of the VM inside the Vagrantfile (required for multi-VM Vagrantfiles) |
 
 The server will use the existing Vagrantfile as-is. No new Vagrantfile is generated. Vagrant commands (`up`, `halt`, `ssh`, etc.) will run in the project directory.
+
+For **multi-VM Vagrantfiles**, specify `vagrant_vm_name` to target a specific VM. If omitted, the server auto-detects the VM name by matching the `name` parameter against VM names in the Vagrantfile (including suffix matching, e.g. MCP name `test-bridge-2` matches Vagrant VM `bridge-2`). If no match is found, it falls back to the first VM.
+
+**Example -- single-VM Vagrantfile:**
+```
+use_project_vm(name="myproject", project_path="/home/user/projects/myproject")
+```
+
+**Example -- multi-VM Vagrantfile:**
+```
+use_project_vm(name="bridge", project_path="/home/user/projects/myproject", vagrant_vm_name="bridge")
+use_project_vm(name="bridge-2", project_path="/home/user/projects/myproject", vagrant_vm_name="bridge-2")
+```
 
 **`create_dev_vm`** -- Create a new VM with a generated Vagrantfile.
 Use when the project does not have a Vagrantfile.
@@ -301,7 +378,7 @@ For existing-Vagrantfile VMs, only the MCP registration is removed -- the projec
 |-----------|----------|-------------|
 | `name` | No | Specific VM name. Omit to list all VMs. |
 
-Returns states: `running`, `poweroff`, `saved`, `not_created`, `unknown`.
+Returns states: `running`, `poweroff`, `shutoff` (libvirt), `saved`, `paused` (libvirt), `not_created`, `unknown`.
 
 #### Command Execution
 
@@ -406,7 +483,7 @@ Returns states: `running`, `poweroff`, `saved`, `not_created`, `unknown`.
 
 ### Typical Agent Workflows
 
-#### Workflow 1: Project with an existing Vagrantfile
+#### Workflow 1: Project with an existing Vagrantfile (single VM)
 
 ```
 1. use_project_vm(name="myproject", project_path="/home/user/projects/myproject")
@@ -422,7 +499,25 @@ Returns states: `running`, `poweroff`, `saved`, `not_created`, `unknown`.
    → Stops and unregisters. Vagrantfile and project files are preserved.
 ```
 
-#### Workflow 2: Project without a Vagrantfile
+#### Workflow 2: Multi-VM Vagrantfile
+
+```
+1. use_project_vm(name="bridge", project_path="/home/user/projects/myproject", vagrant_vm_name="bridge")
+   use_project_vm(name="worker", project_path="/home/user/projects/myproject", vagrant_vm_name="worker")
+   → Registers each VM separately, targeting specific VMs in the Vagrantfile.
+
+2. ensure_dev_vm(name="bridge")
+   ensure_dev_vm(name="worker")
+   → Starts both VMs.
+
+3. exec_in_vm(vm_name="bridge", command="hostname")
+   → Runs on the bridge VM only.
+
+4. exec_in_vm(vm_name="worker", command="hostname")
+   → Runs on the worker VM only.
+```
+
+#### Workflow 3: Project without a Vagrantfile
 
 ```
 1. create_dev_vm(
@@ -447,7 +542,7 @@ Returns states: `running`, `poweroff`, `saved`, `not_created`, `unknown`.
    → Removes VM and all generated files.
 ```
 
-#### Workflow 3: Check status and run a quick command
+#### Workflow 4: Check status and run a quick command
 
 ```
 1. get_vm_status()
@@ -465,6 +560,8 @@ Returns states: `running`, `poweroff`, `saved`, `not_created`, `unknown`.
 4. **`destroy_dev_vm` is safe for existing Vagrantfiles.** It only removes the MCP registration, not the project files.
 5. **Use `ensure_dev_vm` instead of manually checking state.** It handles create/start/idempotency.
 6. **Sync before running commands that depend on local changes.** Use `exec_with_sync` or call `sync_to_vm` before `exec_in_vm`.
+7. **For multi-VM Vagrantfiles, always specify `vagrant_vm_name`.** This ensures each registration targets the correct VM for SSH, status, and execution commands. If omitted, the server tries to match the MCP name to a VM name in the Vagrantfile, but explicit is better.
+8. **Working directories are absolute.** When using `exec_in_vm`, the `working_dir` parameter is used as-is (no `/vagrant` prefix). This works correctly with Vagrantfiles that have `synced_folder` disabled.
 
 ## Development
 

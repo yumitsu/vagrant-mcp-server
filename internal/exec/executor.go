@@ -141,11 +141,12 @@ func (e *Executor) executeSSHCommand(ctx context.Context, command string, execCt
 	// Add working directory if specified
 	fullCommand := command
 	if execCtx.WorkingDir != "" {
-		if strings.HasPrefix(execCtx.WorkingDir, "/vagrant") {
+		if strings.HasPrefix(execCtx.WorkingDir, "/") {
+			// Absolute path - use as-is
 			fullCommand = fmt.Sprintf("cd %s && %s", execCtx.WorkingDir, command)
 		} else {
-			// If not absolute or under /vagrant, prepend /vagrant
-			fullCommand = fmt.Sprintf("cd /vagrant/%s && %s", execCtx.WorkingDir, command)
+			// Relative path - use relative to home directory
+			fullCommand = fmt.Sprintf("cd && cd %s && %s", execCtx.WorkingDir, command)
 		}
 	}
 
