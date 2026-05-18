@@ -49,3 +49,8 @@ yarn-error.log*
 package-lock.json
 yarn.lock
 bin/*
+
+# MemPalace per-project files (issue #185)
+mempalace.yaml
+entities.json
+CLAUDE.md

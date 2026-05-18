@@ -26,11 +26,12 @@ func RegisterVMTools(srv *server.MCPServer, vmManager core.VMManager, syncEngine
 		Memory          float64                  `json:"memory"`
 		Box             string                   `json:"box"`
 		SyncType        string                   `json:"sync_type"`
+		Provider        string                   `json:"provider"`
 		Ports           []map[string]interface{} `json:"ports"`
 		ExcludePatterns []string                 `json:"exclude_patterns"`
 	}
 	createVMTool := mcp.NewTool("create_dev_vm",
-		mcp.WithDescription("Create and configure a development VM with Vagrant"),
+		mcp.WithDescription("Create and configure a development VM with Vagrant. If a Vagrantfile already exists in the project directory, it will be used automatically."),
 		mcp.WithString("name",
 			mcp.Required(),
 			mcp.Description("Name for the development VM")),
@@ -49,6 +50,9 @@ func RegisterVMTools(srv *server.MCPServer, vmManager core.VMManager, syncEngine
 		mcp.WithString("sync_type",
 			mcp.Description("Sync type to use"),
 			mcp.DefaultString("rsync")),
+		mcp.WithString("provider",
+			mcp.Description("Vagrant provider to use (libvirt, virtualbox, vmware_desktop, hyperv)"),
+			mcp.DefaultString("libvirt")),
 		mcp.WithArray("ports",
 			mcp.Description("Ports to forward (format: [host:guest])"),
 			mcp.Items(map[string]any{"type": "object"})),
@@ -93,6 +97,7 @@ func RegisterVMTools(srv *server.MCPServer, vmManager core.VMManager, syncEngine
 			CPU:                 int(args.CPU),
 			Memory:              int(args.Memory),
 			SyncType:            args.SyncType,
+			Provider:            args.Provider,
 			Ports:               ports,
 			SyncExcludePatterns: excludePatterns,
 		}
@@ -241,6 +246,43 @@ func RegisterVMTools(srv *server.MCPServer, vmManager core.VMManager, syncEngine
 		}
 		response := map[string]interface{}{
 			"vms": vmStates,
+		}
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return mcp.NewToolResultError("Failed to marshal response"), nil
+		}
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	})
+
+	// Use project VM tool - register a VM from an existing Vagrantfile in the project directory
+	type UseProjectVMArgs struct {
+		Name        string `json:"name"`
+		ProjectPath string `json:"project_path"`
+	}
+	useProjectVMTool := mcp.NewTool("use_project_vm",
+		mcp.WithDescription("Register and manage a VM from an existing Vagrantfile in the project directory. "+
+			"Use this when the project already has a Vagrantfile for provisioning VMs. "+
+			"The MCP server will use the existing Vagrantfile instead of generating a new one."),
+		mcp.WithString("name",
+			mcp.Required(),
+			mcp.Description("Name to identify this VM in MCP operations")),
+		mcp.WithString("project_path",
+			mcp.Required(),
+			mcp.Description("Path to the project directory containing the Vagrantfile")),
+	)
+	mcp_pkg.RegisterTypedTool(srv, useProjectVMTool, func(ctx context.Context, request mcp.CallToolRequest, args UseProjectVMArgs) (*mcp.CallToolResult, error) {
+		if args.Name == "" || args.ProjectPath == "" {
+			return mcp.NewToolResultError("Missing required parameter: name or project_path"), nil
+		}
+		if err := vmManager.RegisterExistingVM(ctx, args.Name, args.ProjectPath); err != nil {
+			return mcp.NewToolResultErrorf("Failed to register project VM: %v", err), nil
+		}
+		response := map[string]interface{}{
+			"name":                args.Name,
+			"project_path":        args.ProjectPath,
+			"status":              "registered",
+			"using_existing_vagrantfile": true,
+			"timestamp":           time.Now().Format(time.RFC3339),
 		}
 		jsonResponse, err := json.Marshal(response)
 		if err != nil {

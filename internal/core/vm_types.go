@@ -17,12 +17,14 @@ type VMConfig struct {
 	Memory              int      `json:"memory"`
 	ProjectPath         string   `json:"project_path"`
 	SyncType            string   `json:"sync_type"`
+	Provider            string   `json:"provider,omitempty"`
 	HostPath            string   `json:"host_path,omitempty"`
 	GuestPath           string   `json:"guest_path,omitempty"`
 	SyncExcludePatterns []string `json:"sync_exclude_patterns,omitempty"`
 	Ports               []Port   `json:"ports,omitempty"`
 	Environment         []string `json:"environment,omitempty"`
 	Provisioners        []string `json:"provisioners,omitempty"`
+	VagrantfilePath     string   `json:"vagrantfile_path,omitempty"`
 }
 
 // UploadOptions contains options for uploading files to a VM

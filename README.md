@@ -1,50 +1,25 @@
 # Vagrant MCP Server (Go Implementation)
 
-> [!CAUTION]
-> This is work in progress and not yet ready for use.
+A Model Context Protocol (MCP) Server for HashiCorp Vagrant that gives AI agents the ability to create, manage, and interact with development VMs -- including projects that already have their own Vagrantfiles.
 
-A Model Context Protocol (MCP) Server implementation for HashiCorp Vagrant that provides AI agents with the ability to create and manage development VMs with synchronized filesystems and seamless command execution capabilities.
-
-> **Note:** This server must be run directly on the host where Vagrant and your virtualization provider (e.g., VirtualBox, libvirt) are installed. Running inside Docker is not supported, as the server needs direct access to the Vagrant CLI, virtualization drivers, and your project files.
+> **Note:** This server must run on the host where Vagrant and your virtualization provider are installed. Docker is not supported because the server needs direct access to the Vagrant CLI, virtualization drivers, and project files.
 
 ## Features
 
-- **Development VM Management:** Create, ensure, and destroy development VMs
-- **Synchronized Command Execution:** Execute commands inside the VM with guaranteed file synchronization
-- **File System Synchronization:** Configure sync methods, monitor sync status, and resolve conflicts
-- **Development Environment Setup:** Install language runtimes, tools, and dependencies
-
-## Working Example Prompts
-
-Here are example prompts you can use with AI assistants to demonstrate the server's capabilities:
-
-### VM Management Examples
-1. **"Create a development VM for this Node.js project with 4GB RAM and sync the current directory"**
-2. **"Set up a new development environment called 'myapp-dev' for this Python project with automatic file synchronization"**
-3. **"Spin up a development VM with the default Ubuntu box and ensure port 3000 is forwarded to the host"**
-
-### Command Execution Examples
-1. **"Run 'npm install' in the development VM and make sure all files are synced before and after"**
-2. **"Execute the test suite in the VM environment and show me the results"**
-3. **"Run the development server in the background inside the VM and forward port 3000"**
-
-### Environment Setup Examples
-1. **"Install Node.js version 18 and npm in the development VM"**
-2. **"Set up a Python development environment with pip and virtualenv"**
-3. **"Install Docker and docker-compose in the VM for containerized development"**
-
-### File Synchronization Examples
-1. **"Sync all my local changes to the development VM"**
-2. **"Upload the dist/ folder to the VM and extract it"**
-3. **"Check the sync status and resolve any conflicts by keeping the host version"**
+- **Development VM Management** -- Create, ensure, and destroy development VMs
+- **Existing Vagrantfile Support** -- Automatically detects and uses Vagrantfiles already present in project directories
+- **Multi-Provider** -- Supports libvirt, VirtualBox, VMware, Hyper-V, and other Vagrant providers
+- **Synchronized Command Execution** -- Execute commands inside VMs with guaranteed file synchronization
+- **File System Synchronization** -- Configure sync methods (rsync, NFS, SMB), monitor status, resolve conflicts
+- **Development Environment Setup** -- Install language runtimes, tools, and dependencies inside VMs
 
 ## System Requirements
 
-- **Vagrant CLI:** The Vagrant command line interface must be installed and available in your PATH
-- **Virtualization Provider:** A supported virtualization provider (e.g., VirtualBox, VMware, Hyper-V, or libvirt)
-- **Go 1.18+:** Required for building from source
+- **Vagrant CLI** -- Installed and on your PATH
+- **Virtualization Provider** -- libvirt, VirtualBox, VMware, Hyper-V, or any Vagrant-supported provider
+- **Go 1.24+** -- Only needed when building from source
 
-You can verify that Vagrant is installed correctly by running:
+Verify Vagrant is installed:
 
 ```bash
 vagrant --version
@@ -54,571 +29,499 @@ vagrant --version
 
 ### Download Pre-built Binary (Recommended)
 
-Download the latest release for your platform from the [Releases page](https://github.com/vagrant-mcp/server/releases):
+Download the latest release from the [Releases page](https://github.com/yumitsu/vagrant-mcp-server/releases).
 
-| Platform | Architecture | Download |
-|----------|--------------|----------|
-| Linux | x86_64 | [vagrant-mcp-server-linux-amd64](https://github.com/vagrant-mcp/server/releases/latest/download/vagrant-mcp-server-linux-amd64) |
-| Linux | ARM64 | [vagrant-mcp-server-linux-arm64](https://github.com/vagrant-mcp/server/releases/latest/download/vagrant-mcp-server-linux-arm64) |
-| macOS | Intel | [vagrant-mcp-server-darwin-amd64](https://github.com/vagrant-mcp/server/releases/latest/download/vagrant-mcp-server-darwin-amd64) |
-| macOS | Apple Silicon | [vagrant-mcp-server-darwin-arm64](https://github.com/vagrant-mcp/server/releases/latest/download/vagrant-mcp-server-darwin-arm64) |
-| Windows | x86_64 | [vagrant-mcp-server-windows-amd64.exe](https://github.com/vagrant-mcp/server/releases/latest/download/vagrant-mcp-server-windows-amd64.exe) |
+| Platform | Architecture | Binary |
+|----------|--------------|--------|
+| Linux | x86_64 | `vagrant-mcp-server-linux-amd64` |
+| Linux | ARM64 | `vagrant-mcp-server-linux-arm64` |
+| macOS | Intel | `vagrant-mcp-server-darwin-amd64` |
+| macOS | Apple Silicon | `vagrant-mcp-server-darwin-arm64` |
+| Windows | x86_64 | `vagrant-mcp-server-windows-amd64.exe` |
 
-**Installation steps:**
 ```bash
-# Download the appropriate binary for your platform
-curl -L -o vagrant-mcp-server https://github.com/vagrant-mcp/server/releases/latest/download/vagrant-mcp-server-linux-amd64
+# Download
+curl -L -o vagrant-mcp-server https://github.com/yumitsu/vagrant-mcp-server/releases/latest/download/vagrant-mcp-server-linux-amd64
 
-# Make it executable (Linux/macOS)
+# Make executable (Linux/macOS)
 chmod +x vagrant-mcp-server
 
-# Move to your PATH (optional)
+# Move to PATH
 sudo mv vagrant-mcp-server /usr/local/bin/
 
-# Verify installation
+# Verify
 vagrant-mcp-server -version
 ```
 
-**Verify integrity:**
-```bash
-# Download checksums file
-curl -L -O https://github.com/vagrant-mcp/server/releases/latest/download/checksums.txt
+Verify integrity:
 
-# Verify your binary
+```bash
+curl -L -O https://github.com/yumitsu/vagrant-mcp-server/releases/latest/download/checksums.txt
 sha256sum -c checksums.txt --ignore-missing
 ```
 
 ### Build from Source
 
 ```bash
-# Clone the repository
-git clone https://github.com/vagrant-mcp/server.git vagrant-mcp-server
+git clone https://github.com/yumitsu/vagrant-mcp-server.git vagrant-mcp-server
 cd vagrant-mcp-server
-
-# Build the server
 make build
-
-# Start the server (stdio mode by default)
-./bin/vagrant-mcp-server
+./bin/vagrant-mcp-server -version
 ```
 
 ## Configuration
 
-The server can be configured using environment variables:
+All configuration is via environment variables. Copy `.env.example` and adjust:
 
-- `MCP_TRANSPORT` - Transport type to use (stdio or sse, default: stdio)
-- `MCP_PORT` - Port to use for SSE transport (default: 8080)
-- `LOG_LEVEL` - Logging level (debug, info, warn, error, default: info)
-- `VSCODE_MCP` - Set to "true" when running from VS Code 
-- `VM_BASE_DIR` - Base directory for VM files (default: ~/.vagrant-mcp-server/vms)
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MCP_TRANSPORT` | `stdio` | Transport: `stdio` or `sse` |
+| `MCP_PORT` | `8080` | Port for SSE transport |
+| `LOG_LEVEL` | `info` | Logging: `debug`, `info`, `warn`, `error` |
+| `VAGRANT_DEFAULT_PROVIDER` | `libvirt` | Vagrant provider: `libvirt`, `virtualbox`, `vmware_desktop`, `hyperv` |
+| `VM_BASE_DIR` | `~/.vagrant-mcp/vms` | Where managed VM files are stored |
+| `SKIP_VAGRANT_VALIDATION` | `false` | Set to `true` to skip Vagrantfile validation |
 
-## VS Code Integration
+## MCP Client Setup
 
-The Vagrant MCP Server can be used with Visual Studio Code to allow AI assistants to create and manage development VMs directly from your editor.
+### Claude Code (CLI)
 
-### Prerequisites
+Add to your `~/.claude/mcp.json` or project `.mcp.json`:
 
-1. Make sure you've built the server as described in the Installation section
-2. Ensure Vagrant CLI and a virtualization provider are installed on your system
-3. Install Visual Studio Code
+```json
+{
+  "mcpServers": {
+    "vagrant": {
+      "type": "stdio",
+      "command": "/usr/local/bin/vagrant-mcp-server",
+      "env": {
+        "VAGRANT_DEFAULT_PROVIDER": "libvirt",
+        "LOG_LEVEL": "info"
+      }
+    }
+  }
+}
+```
 
-### Steps to Install in VS Code
+### Claude Desktop
 
-1. **Configure VS Code Settings**
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
-   Add the following to your VS Code `settings.json` or `mcp.json` file (Command Palette > Preferences: Open User Settings (JSON)):
+```json
+{
+  "mcpServers": {
+    "vagrant": {
+      "command": "/usr/local/bin/vagrant-mcp-server",
+      "env": {
+        "VAGRANT_DEFAULT_PROVIDER": "libvirt"
+      }
+    }
+  }
+}
+```
 
-   ```json
-   "mcp": {
-     "inputs": [],
-     "servers": {
-       "vagrant-mcp-server": {
+### VS Code (Copilot / Continue)
+
+Add to VS Code `settings.json` or `.vscode/mcp.json`:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "vagrant": {
+        "type": "stdio",
+        "command": "/usr/local/bin/vagrant-mcp-server",
+        "env": {
+          "VAGRANT_DEFAULT_PROVIDER": "libvirt",
+          "VSCODE_MCP": "true"
+        }
+      }
+    }
+  }
+}
+```
+
+### SSE Mode (for remote or multi-client access)
+
+```bash
+# Start the server
+MCP_TRANSPORT=sse MCP_PORT=8080 vagrant-mcp-server
+```
+
+Then connect MCP clients to `http://localhost:8080/sse`.
+
+## How to Use (Agent Guide)
+
+### Quick Setup via Agentic Prompt
+
+To configure this MCP server in your project, give your AI agent this prompt:
+
+```
+Add the Vagrant MCP Server to my project's MCP configuration.
+
+1. Build the server from source:
+   git clone https://github.com/yumitsu/vagrant-mcp-server.git /tmp/vagrant-mcp-server
+   cd /tmp/vagrant-mcp-server && make build
+   cp bin/vagrant-mcp-server ~/.local/bin/vagrant-mcp-server
+
+2. Create or update .mcp.json in the project root with:
+   {
+     "mcpServers": {
+       "vagrant": {
          "type": "stdio",
-         "command": "/path/to/vagrant-mcp-server/bin/vagrant-mcp-server",
-         "description": "Manage Vagrant development VMs",
+         "command": "<HOME>/.local/bin/vagrant-mcp-server",
          "env": {
+           "VAGRANT_DEFAULT_PROVIDER": "libvirt",
+           "LOG_LEVEL": "info"
+         }
+       }
+     }
+   }
+   Replace <HOME> with the actual home directory path.
+
+3. If this project has a Vagrantfile, use use_project_vm to register it.
+   If not, use create_dev_vm to create a VM with appropriate settings.
+
+4. Verify by calling get_vm_status to confirm the server is responding.
+```
+
+**For Claude Desktop**, use this prompt instead:
+
+```
+Add the Vagrant MCP Server to Claude Desktop's configuration.
+
+1. Build the server:
+   git clone https://github.com/yumitsu/vagrant-mcp-server.git /tmp/vagrant-mcp-server
+   cd /tmp/vagrant-mcp-server && make build
+   cp bin/vagrant-mcp-server ~/.local/bin/vagrant-mcp-server
+
+2. Update Claude Desktop config at:
+   - macOS: ~/Library/Application Support/Claude/claude_desktop_config.json
+   - Linux: ~/.config/Claude/claude_desktop_config.json
+
+   Add this entry to mcpServers:
+   {
+     "vagrant": {
+       "command": "<HOME>/.local/bin/vagrant-mcp-server",
+       "env": {
+         "VAGRANT_DEFAULT_PROVIDER": "libvirt"
+       }
+     }
+   }
+
+3. Restart Claude Desktop to load the new MCP server.
+```
+
+**For VS Code Copilot**, use this prompt:
+
+```
+Add the Vagrant MCP Server to VS Code's MCP configuration.
+
+1. Build the server:
+   git clone https://github.com/yumitsu/vagrant-mcp-server.git /tmp/vagrant-mcp-server
+   cd /tmp/vagrant-mcp-server && make build
+   cp bin/vagrant-mcp-server ~/.local/bin/vagrant-mcp-server
+
+2. Create or update .vscode/mcp.json with:
+   {
+     "servers": {
+       "vagrant": {
+         "type": "stdio",
+         "command": "<HOME>/.local/bin/vagrant-mcp-server",
+         "env": {
+           "VAGRANT_DEFAULT_PROVIDER": "libvirt",
            "VSCODE_MCP": "true"
          }
        }
      }
    }
-   ```
 
-   Replace `/path/to/vagrant-mcp-server` with the absolute path to your built server binary.
+3. Reload VS Code window to activate the MCP server.
+```
 
-2. **Restart VS Code**
+Replace `libvirt` with your actual provider (`virtualbox`, `vmware_desktop`, `hyperv`) if different.
 
-   Restart VS Code to apply the new MCP connection settings.
+### Decision Flow: Which Tool to Use
 
-3. **Using the MCP Server with VS Code AI Features**
+```
+Does the project directory contain a Vagrantfile?
+├── YES → use use_project_vm to register it, then ensure_dev_vm to start it
+└── NO  → use create_dev_vm to create a new VM, then ensure_dev_vm to start it
+```
 
-   Now AI assistants in VS Code will be able to:
-   - Create development VMs for your projects
-   - Execute commands inside VMs
-   - Synchronize files between your local system and VMs
-   - Install development tools and languages
-   - Manage VM lifecycle (start/stop/destroy)
+### Tool Reference
 
-4. **Example Usage with AI Assistant**
+#### VM Lifecycle
 
-   You can ask the AI assistant questions like:
-   - "Create a development VM for this project"
-   - "Run the tests in a VM"
-   - "Install Node.js in the development VM"
-   - "Execute the application in the VM and forward port 3000"
+**`use_project_vm`** -- Register an existing Vagrantfile from the project directory.
+Use this first when the project already has a `Vagrantfile`.
 
-### Security Considerations
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `name` | Yes | Identifier for this VM in MCP operations |
+| `project_path` | Yes | Absolute path to the directory containing the Vagrantfile |
 
-When using the Vagrant MCP Server with VS Code:
+The server will use the existing Vagrantfile as-is. No new Vagrantfile is generated. Vagrant commands (`up`, `halt`, `ssh`, etc.) will run in the project directory.
 
-1. **Permissions**: The server runs with your user privileges and can:
-   - Create, modify, and delete files in your project directories
-   - Execute commands on your system through Vagrant
-   - Manage virtual machines on your behalf
+**`create_dev_vm`** -- Create a new VM with a generated Vagrantfile.
+Use when the project does not have a Vagrantfile.
 
-2. **Access Control**: 
-   - Only install this MCP Server on systems where you trust the AI assistant with the above permissions
-   - The server provides no authentication mechanisms itself - it relies on VS Code's security model
-   - Do not expose the SSE transport on public networks (if using SSE mode)
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `name` | Yes | - | VM name |
+| `project_path` | Yes | - | Project directory to sync |
+| `cpu` | No | 2 | CPU cores |
+| `memory` | No | 2048 | RAM in MB |
+| `box` | No | `ubuntu/focal64` | Vagrant box |
+| `sync_type` | No | `rsync` | Sync method: `rsync`, `nfs`, `smb` |
+| `provider` | No | `libvirt` | Provider: `libvirt`, `virtualbox`, `vmware_desktop`, `hyperv` |
+| `ports` | No | 3000,8000,5432,3306,6379 | Port forwards `[{guest, host}]` |
+| `exclude_patterns` | No | common dirs | Sync exclusions |
 
-3. **Data Handling**:
-   - Be cautious when syncing sensitive data between your host and VM
-   - Consider using sync exclusion patterns for confidential files
+If a `Vagrantfile` already exists in `project_path`, the server automatically uses it instead of generating one.
 
-4. **Resource Management**:
-   - Monitor resource usage of created VMs to prevent excessive consumption
-   - Always destroy VMs when they are no longer needed
+**`ensure_dev_vm`** -- Make sure a VM is running (starts it if stopped, creates it if missing).
 
-### Troubleshooting VS Code Integration
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `name` | Yes | VM name |
+| `project_path` | No | Required only if the VM doesn't exist yet |
 
-If you encounter issues with the VS Code integration:
+**`destroy_dev_vm`** -- Remove a VM and its resources.
 
-1. **Check Server Logs**:
-   - Set the `LOG_LEVEL` environment variable to `debug` in your settings.json:
-     ```json
-    "mcp": {
-        "inputs": [],
-        "servers": {
-          "vagrant-mcp-server": {
-            "type": "stdio",
-            "command": "/path/to/vagrant-mcp-server/bin/vagrant-mcp-server",
-            "description": "Manage Vagrant development VMs",
-            "env": {
-                "LOG_LEVEL": "debug",
-                "VSCODE_MCP": "true"
-            }
-          }
-        }
-      }
-     ```
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `name` | Yes | VM name |
 
-2. **Verify Vagrant Installation**:
-   - Run `vagrant --version` in your terminal to confirm Vagrant is properly installed
-   - Ensure your virtualization provider (VirtualBox, etc.) is working correctly
+For existing-Vagrantfile VMs, only the MCP registration is removed -- the project's Vagrantfile and files are preserved.
 
-3. **Check Paths**:
-   - Make sure the path to the server binary is correct in your settings.json
-   - Verify that project paths used with the server are valid and accessible
+**`get_vm_status`** -- Check VM state.
 
-4. **Common Issues**:
-   - "Vagrant is not installed" error: Add Vagrant to your PATH or specify the full path in your environment
-   - "Failed to create VM": Check your virtualization provider is running and properly configured
-   - Connection issues: Restart VS Code and check that the MCP server is correctly configured
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `name` | No | Specific VM name. Omit to list all VMs. |
 
-## Usage
-
-### MCP Tools
-
-#### Development VM Management
-
-- `create_dev_vm`: Create and configure a development VM
-  - Parameters:
-    - `name` (string): Name for the development VM
-    - `project_path` (string): Path to the project directory to sync
-    - `cpu` (number, optional): Number of CPU cores (default: 2)
-    - `memory` (number, optional): Amount of memory in MB (default: 2048)
-    - `box` (string, optional): Vagrant box to use (default: "ubuntu/focal64")
-    - `sync_type` (string, optional): Sync type to use (default: "rsync")
-  - **Example Prompts:**
-    - "Create a development VM named 'webapp-dev' for the current project directory"
-    - "Set up a VM called 'api-server' with 4GB RAM for the project in /home/user/myapi"
-    - "Create a high-performance VM with 8 cores and 8GB RAM for the machine learning project"
-
-- `ensure_dev_vm`: Ensure development VM is running
-  - Parameters:
-    - `name` (string): Name of the VM to ensure
-  - **Example Prompts:**
-    - "Make sure the 'webapp-dev' VM is running and ready"
-    - "Start the development VM if it's not already running"
-    - "Ensure my project VM is up and available for development"
-
-- `destroy_dev_vm`: Destroy a development VM
-  - Parameters:
-    - `name` (string): Name of the VM to destroy
-  - **Example Prompts:**
-    - "Clean up and destroy the 'old-project' development VM"
-    - "Remove the VM to free up disk space"
-    - "Permanently delete the VM and all its resources"
+Returns states: `running`, `poweroff`, `saved`, `not_created`, `unknown`.
 
 #### Command Execution
 
-- `exec_in_vm`: Execute commands inside a VM with pre/post file sync
-  - Parameters:
-    - `vm_name` (string): Name of the VM
-    - `command` (string): Command to execute
-    - `working_dir` (string, optional): Working directory
-    - `env` (object, optional): Environment variables
-  - **Example Prompts:**
-    - "Run 'npm test' in the development VM and sync files before and after"
-    - "Execute the build script in the VM with the latest code changes"
-    - "Run the database migration command in the VM environment"
+**`exec_in_vm`** -- Run a command in the VM.
 
-- `exec_with_sync`: Execute commands with explicit before/after sync
-  - Parameters:
-    - `vm_name` (string): Name of the VM
-    - `command` (string): Command to execute
-    - `sync_before` (boolean): Sync files before execution
-    - `sync_after` (boolean): Sync files after execution
-    - `working_dir` (string, optional): Working directory
-    - `env` (object, optional): Environment variables
-  - **Example Prompts:**
-    - "Run the tests without syncing files first, but sync the results back"
-    - "Execute the linter and sync only the fixed files back to the host"
-    - "Run the development server without any file synchronization"
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `vm_name` | Yes | - | VM name |
+| `command` | Yes | - | Shell command |
+| `working_dir` | No | `/home/vagrant` | Directory to run in |
 
-- `run_background_task`: Run a command in the VM as a background task
-  - Parameters:
-    - `vm_name` (string): Name of the VM
-    - `command` (string): Command to execute
-    - `sync_before` (boolean): Sync files before execution
-    - `working_dir` (string, optional): Working directory
-  - **Example Prompts:**
-    - "Start the development server in the background in the VM"
-    - "Run the file watcher process in the VM background"
-    - "Start the database server in the VM and keep it running"
+**`exec_with_sync`** -- Run a command with file sync before/after.
 
-- `sync_to_vm`: Manually sync from host to VM
-  - Parameters:
-    - `vm_name` (string): Name of the VM
-    - `path` (string, optional): Path to sync (default: all paths)
-  - **Example Prompts:**
-    - "Sync my latest code changes to the development VM"
-    - "Upload the new configuration files to the VM"
-    - "Push all my uncommitted changes to the VM environment"
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `vm_name` | Yes | - | VM name |
+| `command` | Yes | - | Shell command |
+| `working_dir` | No | `/home/vagrant` | Directory to run in |
+| `sync_before` | No | `true` | Sync host -> VM first |
+| `sync_after` | No | `true` | Sync VM -> host after |
 
-- `sync_from_vm`: Manually sync from VM to host
-  - Parameters:
-    - `vm_name` (string): Name of the VM
-    - `path` (string, optional): Path to sync (default: all paths)
-  - **Example Prompts:**
-    - "Download the generated build artifacts from the VM"
-    - "Sync the log files from the VM to my local machine"
-    - "Pull any changes made in the VM back to my host"
-    
-- `upload_to_vm`: Upload files from host to VM
-  - Parameters:
-    - `vm_name` (string): Name of the VM
-    - `source` (string): Source file or directory path on host
-    - `destination` (string): Destination path on VM
-    - `compress` (boolean, optional): Whether to compress the file before upload
-    - `compression_type` (string, optional): Compression type to use (tgz or zip)
-  - **Example Prompts:**
-    - "Upload the data files to /tmp/data in the VM"
-    - "Copy the backup.tar.gz file to the VM's home directory"
-    - "Upload and extract the dependencies folder to the VM"
+**`run_background_task`** -- Start a background process in the VM.
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `vm_name` | Yes | - | VM name |
+| `command` | Yes | - | Shell command |
+| `working_dir` | No | `/home/vagrant` | Directory to run in |
+| `sync_before` | No | `true` | Sync host -> VM first |
+
+#### File Synchronization
+
+**`configure_sync`** -- Change sync method for a VM.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `vm_name` | Yes | VM name |
+| `sync_type` | Yes | `rsync`, `nfs`, `smb`, `virtualbox` |
+| `exclude_patterns` | No | Patterns to exclude |
+| `host_path` | No | Host path |
+| `guest_path` | No | Guest path |
+
+**`sync_to_vm`** -- Push files from host to VM.
+
+**`sync_from_vm`** -- Pull files from VM to host.
+
+**`upload_to_vm`** -- Upload specific files/directories.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `vm_name` | Yes | VM name |
+| `source` | Yes | Source path on host |
+| `destination` | Yes | Destination path in VM |
+| `compress` | No | Compress before upload |
+| `compression_type` | No | `tgz` or `zip` |
+
+**`sync_status`** -- Check current sync state.
+
+**`resolve_sync_conflicts`** -- Resolve a file conflict.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `vm_name` | Yes | VM name |
+| `path` | Yes | Conflicted file path |
+| `resolution` | Yes | `use_host`, `use_vm`, `merge`, `keep_both` |
+
+**`search_code`** -- Search files in the VM.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `vm_name` | Yes | VM name |
+| `query` | Yes | Search query |
+| `search_type` | No | `semantic`, `exact`, `fuzzy` |
+| `max_results` | No | Max results |
+| `case_sensitive` | No | Case sensitive |
 
 #### Environment Setup
 
-- `setup_dev_environment`: Install language runtimes and tools
-  - Parameters:
-    - `vm_name` (string): Name of the VM
-    - `runtimes` (array): Language runtimes to install (e.g., 'node', 'python', 'go')
-    - `tools` (array, optional): Additional tools to install
-  - **Example Prompts:**
-    - "Install Node.js and Python in the development VM"
-    - "Set up a Go development environment with all necessary tools"
-    - "Install Ruby and Rails for web development"
+**`setup_dev_environment`** -- Install language runtimes.
 
-- `install_dev_tools`: Install specific development tools
-  - Parameters:
-    - `vm_name` (string): Name of the VM
-    - `tools` (array): List of tools to install
-  - **Example Prompts:**
-    - "Install Docker and docker-compose in the VM"
-    - "Add git, vim, and curl to the development environment"
-    - "Install the latest version of PostgreSQL and Redis"
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `vm_name` | Yes | VM name |
+| `runtimes` | Yes | e.g. `["node", "python", "go"]` |
+| `tools` | No | Additional tools |
 
-- `configure_shell`: Configure shell environment
-  - Parameters:
-    - `vm_name` (string): Name of the VM
-    - `shell_type` (string, optional): Shell to configure (bash, zsh, etc.)
-    - `env_vars` (array, optional): Environment variables to set
-    - `aliases` (array, optional): Shell aliases to configure
-  - **Example Prompts:**
-    - "Set up zsh with development aliases in the VM"
-    - "Configure bash with custom environment variables"
-    - "Add useful aliases for common development commands"
+**`install_dev_tools`** -- Install specific dev tools.
 
-#### Synchronization
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `vm_name` | Yes | VM name |
+| `tools` | Yes | e.g. `["docker", "git", "postgresql"]` |
 
-- `configure_sync`: Configure sync method and options
-  - Parameters:
-    - `vm_name` (string): Name of the VM
-    - `sync_type` (string): Sync type (rsync, nfs, smb, virtualbox)
-    - `exclude_patterns` (array, optional): Patterns to exclude
-    - `guest_path` (string, optional): Guest path to sync
-    - `host_path` (string, optional): Host path to sync
-  - **Example Prompts:**
-    - "Configure NFS sync for faster file operations"
-    - "Set up rsync with exclusions for node_modules and .git folders"
-    - "Switch to SMB sync for better Windows host compatibility"
+**`configure_shell`** -- Set up shell environment.
 
-- `sync_status`: Check sync status
-  - Parameters:
-    - `vm_name` (string): Name of the VM
-  - **Example Prompts:**
-    - "Check if all files are synchronized between host and VM"
-    - "Show me the current sync status and any pending changes"
-    - "Verify that the file synchronization is working properly"
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `vm_name` | Yes | VM name |
+| `shell_type` | No | `bash`, `zsh`, etc. |
+| `env_vars` | No | Environment variables |
+| `aliases` | No | Shell aliases |
 
-- `resolve_sync_conflicts`: Resolve sync conflicts
-  - Parameters:
-    - `vm_name` (string): Name of the VM
-    - `path` (string): Path of the conflicted file
-    - `resolution` (string): Resolution method ('use_host', 'use_vm', 'merge', 'keep_both')
-  - **Example Prompts:**
-    - "Resolve sync conflicts by keeping the host version"
-    - "Fix sync conflicts in the config file by using the VM version"
-    - "Merge the conflicting files and keep both versions"
+### Typical Agent Workflows
 
-- `search_code`: Search code semantically in the VM
-  - Parameters:
-    - `vm_name` (string): Name of the VM
-    - `query` (string): Search query
-    - `search_type` (string, optional): Type of search ('semantic', 'exact', 'fuzzy')
-    - `max_results` (number, optional): Maximum results to return
-    - `case_sensitive` (boolean, optional): Case sensitive search
-  - **Example Prompts:**
-    - "Find all functions that handle user authentication"
-    - "Search for database connection code in the VM"
-    - "Look for TODO comments across all project files"
+#### Workflow 1: Project with an existing Vagrantfile
 
-- `get_vm_status`: Get status of development VMs
-  - Parameters:
-    - `name` (string, optional): Name of specific VM to check
-  - **Example Prompts:**
-    - "Show me the status of all development VMs"
-    - "Check if the 'webapp-dev' VM is running and healthy"
-    - "Get resource usage statistics for the development VM"
+```
+1. use_project_vm(name="myproject", project_path="/home/user/projects/myproject")
+   → Registers the VM. The existing Vagrantfile is used as-is.
 
-## Privacy Policy
+2. ensure_dev_vm(name="myproject")
+   → Starts the VM if not running.
 
-**Data Collection:** The Vagrant MCP Server does not collect, store, or transmit any personal data or project information to external servers. All operations are performed locally on your development machine.
+3. exec_in_vm(vm_name="myproject", command="npm test")
+   → Runs tests inside the VM.
 
-**Local Data Handling:**
-- Project files are synchronized only between your host machine and local VMs
-- Commands are executed locally within your development environment
-- No telemetry, analytics, or usage data is collected
-- No network connections are made to external services (except for downloading Vagrant boxes as configured by you)
+4. destroy_dev_vm(name="myproject")
+   → Stops and unregisters. Vagrantfile and project files are preserved.
+```
 
-**VM Data:** Virtual machines created by this server contain only the data you explicitly provide. VMs are stored locally on your machine and are not shared or transmitted anywhere.
+#### Workflow 2: Project without a Vagrantfile
 
-**Logging:** The server generates local logs for debugging purposes. These logs remain on your machine and are not transmitted externally.
+```
+1. create_dev_vm(
+     name="dev-env",
+     project_path="/home/user/projects/newapp",
+     provider="libvirt",
+     cpu=4,
+     memory=4096
+   )
+   → Creates a VM with a generated Vagrantfile.
 
-## Security
+2. ensure_dev_vm(name="dev-env")
+   → Starts the VM.
 
-### Security Considerations
+3. setup_dev_environment(vm_name="dev-env", runtimes=["node", "python"])
+   → Installs Node.js and Python.
 
-This MCP server provides powerful capabilities that require careful consideration:
+4. exec_with_sync(vm_name="dev-env", command="npm install && npm run build")
+   → Syncs files, runs build, syncs results back.
 
-**Permissions and Access:**
-- The server runs with your user privileges and can create, modify, and delete files in your project directories  
-- Commands executed through the server run in VMs but can affect your host system through file synchronization
-- The server can manage virtual machines on your behalf, which includes resource allocation and network configuration
+5. destroy_dev_vm(name="dev-env")
+   → Removes VM and all generated files.
+```
 
-**Network Security:**
-- VMs created by this server may forward ports to your host machine
-- Ensure firewall rules are appropriate for your development needs
-- Do not expose forwarded ports on public networks without proper security measures
+#### Workflow 3: Check status and run a quick command
 
-**File System Security:**
-- Be cautious when syncing sensitive data between host and VM
-- Use sync exclusion patterns for confidential files (`.env`, private keys, etc.)
-- Regularly review sync configurations to prevent unintended data exposure
+```
+1. get_vm_status()
+   → Lists all VMs and their states.
 
-**Resource Security:**
-- Monitor resource usage of created VMs to prevent resource exhaustion
-- Destroy VMs when no longer needed to free resources
-- Set appropriate memory and CPU limits for VMs
+2. exec_in_vm(vm_name="myproject", command="ls -la /vagrant")
+   → Lists files in the synced project directory.
+```
 
+### Important Notes for Agents
+
+1. **Always check for existing Vagrantfiles first.** If the project has a `Vagrantfile`, use `use_project_vm` -- don't generate a new one.
+2. **`create_dev_vm` auto-detects Vagrantfiles.** Even if you call `create_dev_vm` on a project with an existing `Vagrantfile`, it will use the existing one.
+3. **Provider matters.** Set `provider` to match your system's virtualization (libvirt on Linux, VirtualBox on cross-platform, etc.).
+4. **`destroy_dev_vm` is safe for existing Vagrantfiles.** It only removes the MCP registration, not the project files.
+5. **Use `ensure_dev_vm` instead of manually checking state.** It handles create/start/idempotency.
+6. **Sync before running commands that depend on local changes.** Use `exec_with_sync` or call `sync_to_vm` before `exec_in_vm`.
 
 ## Development
 
 ### Prerequisites
 
-1. **Go 1.18 or higher**
-2. **Vagrant CLI** - Required for both running the server and tests
-   - All tests use the real Vagrant CLI for validation
-   - Tests requiring Vagrant will be skipped if Vagrant is not installed
-   - Some tests that require a full VM environment may be skipped in CI
-3. **A supported virtualization provider** - VirtualBox is recommended for development
+- Go 1.24+
+- Vagrant CLI
+- A virtualization provider (libvirt, VirtualBox, etc.)
 
 ### Common Tasks
 
 ```bash
-# Format code
-go fmt ./...
-
-# Lint code
-make lint
-
-# Run unit tests (requires Vagrant CLI installed)
-make test
-
-# Run integration tests (requires Vagrant CLI and a virtualization provider)
-make test-integration
-
-# Run VM start tests (actually starts VMs - very slow)
-make test-vm-start
-
-# See all test options
-make help-test
-
-# Security checks
-make sec
-
-# Build all release binaries
-git tag v1.0.0  # or your version
-git push --tags
-make release
+make build              # Build binary
+make test               # Fast unit tests (no VMs started)
+make test-integration   # Creates VMs but doesn't start them
+make test-vm-start      # Full VM lifecycle (very slow)
+make fmt                # Format code
+make lint               # Lint
+make sec                # Security scan
+make all                # fmt + lint + sec + test + build
+make tools              # Install dev tools (golangci-lint, gosec)
 ```
 
-## Developer Scripts
-
-The `dev-scripts/` directory contains optional utilities for development and manual testing:
-
-- `test_script.sh`: Example shell script for testing the `exec_in_vm` tool. Can be uploaded and executed in a VM to verify command execution and environment setup.
-- `test_mcp.py`: Python utility for sending JSON-RPC requests to the MCP server for manual or ad-hoc testing. Useful for developers who want to interact with the server outside of the normal client workflow.
-
-These scripts are not required for normal operation or production use, but may be helpful for contributors and advanced users.
-
-## Testing and Validation
-
-Before using in production, we recommend testing the server with the MCP Inspector:
+### Testing with MCP Inspector
 
 ```bash
-# Install the MCP Inspector (if not already installed)
 npm install -g @modelcontextprotocol/inspector
-
-# Test the server
-mcp-inspector /path/to/vagrant-mcp-server/bin/vagrant-mcp-server
+mcp-inspector ./bin/vagrant-mcp-server
 ```
-
-## Developer Scripts
-
-The `dev-scripts/` directory contains optional utilities for development and manual testing:
-
-- `test_script.sh`: Example shell script for testing the `exec_in_vm` tool. Can be uploaded and executed in a VM to verify command execution and environment setup.
-- `test_mcp.py`: Python utility for sending JSON-RPC requests to the MCP server for manual or ad-hoc testing. Useful for developers who want to interact with the server outside of the normal client workflow.
-
-These scripts are not required for normal operation or production use, but may be helpful for contributors and advanced users.
-
-### Compatibility Testing
-
-This server has been tested and validated with:
-- **Claude.ai** - Full compatibility with web interface
-- **Claude for Desktop** - Complete VS Code integration support  
-- **MCP Connector** - Standard MCP protocol compliance
-- **Vagrant 2.3+** - All supported Vagrant versions
-- **VirtualBox, VMware, Hyper-V, libvirt** - Major virtualization providers
-
-### VM Cleanup
-
-During testing and development, VMs may occasionally not be cleaned up properly. We provide several mechanisms to handle this:
-
-#### Automatic Cleanup
-Tests automatically clean up VMs using a robust cleanup process that:
-- Attempts normal VM stop and destroy operations
-- Falls back to force destroy using Vagrant global commands
-- Logs all cleanup activities for debugging
-
-#### Manual Cleanup
-If you notice orphaned test VMs, you can clean them up manually:
-
-```bash
-# Check for any running VMs
-vagrant global-status
-
-# Destroy a specific VM by ID
-vagrant destroy VM_ID --force
-```
-
-There is currently no bundled cleanup script. Use the above Vagrant commands for manual cleanup.
-
-#### Integration Test Configuration
-Long-running integration tests (that actually create VMs) are gated behind an environment variable:
-
-```bash
-# Run unit tests only (default, no VMs created)
-make test
-
-# Run integration tests (creates real VMs)
-make test-integration
-```
-
-This prevents accidental VM creation during normal development while allowing full integration testing when needed.
 
 ### Release Process
 
-Our automated release process ensures quality and reliability:
-
-1. **Automated Testing** - Comprehensive test suite runs on every commit
-2. **Security Scanning** - Code is scanned for security vulnerabilities  
-3. **Integration Testing** - Real Vagrant environments are tested
-4. **Documentation Review** - All documentation is verified for accuracy
-5. **MCP Protocol Compliance** - Validated against official MCP specifications
-
-**Creating a Release:**
-Releases are automatically created when a git tag is pushed:
+Releases are created by pushing a version tag:
 
 ```bash
-# Create and push a new version tag
 git tag v1.0.0
 git push origin v1.0.0
 ```
 
-This triggers a GitHub Actions workflow that:
-- Validates the version tag format
-- Runs full test suite including integration tests
-- Builds binaries for all supported platforms (Linux, macOS, Windows)
-- Generates SHA256 checksums for all binaries
-- Creates a GitHub Release with all assets
-- Includes detailed release notes with changelog
+GitHub Actions builds cross-platform binaries, generates checksums, and creates a release.
 
-**Version Management:**
-- Version numbers are automatically extracted from git tags
-- No hardcoded versions in source code
-- Build-time injection of version, commit, and build metadata
-- Supports semantic versioning (e.g., v1.0.0, v1.0.0-beta.1)
+## Privacy
 
-## Contact and Support
+- No data is collected, stored, or transmitted to external servers
+- All operations are local (host <-> VM only)
+- No telemetry or analytics
+- Logs stay on your machine
 
-**Project Maintainer:** Vagrant MCP Server Team  
-**Email:** support@vagrant-mcp-server.dev  
-**Repository:** [https://github.com/vagrant-mcp/server](https://github.com/vagrant-mcp/server)  
-**Issues:** [https://github.com/vagrant-mcp/server/issues](https://github.com/vagrant-mcp/server/issues)  
+## Security Considerations
 
-**Response Times:**
-- Security vulnerabilities: Within 24 hours
-- Bug reports: Within 72 hours  
-- Feature requests: Within 1 week
-
-**Maintenance Commitment:** This project is actively maintained with regular updates, security patches, and feature enhancements. We commit to supporting the latest stable version of Vagrant and major virtualization providers.
+- The server runs with your user privileges
+- It can create/modify/delete files in project directories
+- It can execute commands in VMs (which may affect host via sync)
+- VMs may forward ports to localhost
+- Use sync exclusion patterns for sensitive files (`.env`, keys, etc.)
+- Destroy VMs when no longer needed
 
 ## License
 
-This project is licensed under the Mozilla Public License 2.0 (MPL-2.0).
-
-Copyright (c) 2025 Ricardo Oliveira
-
-This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+Mozilla Public License 2.0 (MPL-2.0). Copyright (c) 2025 Ricardo Oliveira.

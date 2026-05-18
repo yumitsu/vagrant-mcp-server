@@ -46,7 +46,7 @@ func main() {
 		fmt.Printf("Go Version: %s\n", GoVersion)
 		fmt.Printf("Author: %s\n", Author)
 		fmt.Printf("Contact: %s\n", Contact)
-		fmt.Printf("Repository: https://github.com/vagrant-mcp/server\n")
+		fmt.Printf("Repository: https://github.com/yumitsu/vagrant-mcp-server\n")
 		return
 	}
 

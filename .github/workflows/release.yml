@@ -247,7 +247,7 @@ jobs:
           
           ```bash
           # Download checksums file
-          curl -L -O https://github.com/vagrant-mcp/server/releases/download/${{ needs.validate.outputs.tag }}/checksums.txt
+          curl -L -O https://github.com/yumitsu/vagrant-mcp-server/releases/download/${{ needs.validate.outputs.tag }}/checksums.txt
           
           # Verify your binary (example for Linux amd64)
           sha256sum -c checksums.txt --ignore-missing

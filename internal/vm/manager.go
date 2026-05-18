@@ -22,7 +22,8 @@ import (
 
 // Manager handles VM lifecycle operations
 type Manager struct {
-	baseDir string
+	baseDir   string
+	provider  string
 }
 
 // NewManager creates a new VM manager
@@ -47,19 +48,36 @@ func NewManager() (*Manager, error) {
 		return nil, fmt.Errorf("failed to create VM base directory: %w", err)
 	}
 
+	// Determine provider from environment or default to libvirt
+	provider := os.Getenv("VAGRANT_DEFAULT_PROVIDER")
+	if provider == "" {
+		provider = "libvirt"
+	}
+
 	return &Manager{
-		baseDir: baseDir,
+		baseDir:  baseDir,
+		provider: provider,
 	}, nil
 }
 
-// CreateVM creates a new Vagrant VM with the given configuration
+// CreateVM creates a new Vagrant VM with the given configuration.
+// If a Vagrantfile already exists in the project directory, it will be used instead of generating a new one.
 func (m *Manager) CreateVM(ctx context.Context, name string, projectPath string, config core.VMConfig) error {
+	// Check for existing Vagrantfile in the project directory
+	existingVagrantfile := filepath.Join(projectPath, "Vagrantfile")
+	if _, err := os.Stat(existingVagrantfile); err == nil {
+		return m.registerFromExistingVagrantfile(name, projectPath, existingVagrantfile, config)
+	}
+
 	vmDir := m.getVMDir(name)
 	if err := os.MkdirAll(vmDir, 0755); err != nil {
 		return errors.OperationFailed("create VM directory", err)
 	}
 	config.Name = name
 	config.ProjectPath = projectPath
+	if config.Provider == "" {
+		config.Provider = m.provider
+	}
 	if err := m.saveVMConfig(name, config); err != nil {
 		return errors.OperationFailed("save VM configuration", err)
 	}
@@ -67,6 +85,40 @@ func (m *Manager) CreateVM(ctx context.Context, name string, projectPath string,
 		return errors.OperationFailed("generate Vagrantfile", err)
 	}
 	log.Info().Str("name", name).Msg("VM created successfully")
+	return nil
+}
+
+// RegisterExistingVM registers a VM from an existing Vagrantfile in the project directory.
+func (m *Manager) RegisterExistingVM(ctx context.Context, name string, projectPath string) error {
+	existingVagrantfile := filepath.Join(projectPath, "Vagrantfile")
+	if _, err := os.Stat(existingVagrantfile); os.IsNotExist(err) {
+		return errors.NotFound("Vagrantfile", existingVagrantfile)
+	}
+
+	config := core.VMConfig{
+		Name:            name,
+		ProjectPath:     projectPath,
+		VagrantfilePath: existingVagrantfile,
+		Provider:        m.provider,
+	}
+	return m.registerFromExistingVagrantfile(name, projectPath, existingVagrantfile, config)
+}
+
+// registerFromExistingVagrantfile sets up a VM that uses an existing Vagrantfile from the project directory.
+func (m *Manager) registerFromExistingVagrantfile(name string, projectPath string, vagrantfilePath string, config core.VMConfig) error {
+	config.Name = name
+	config.ProjectPath = projectPath
+	config.VagrantfilePath = vagrantfilePath
+	if config.Provider == "" {
+		config.Provider = m.provider
+	}
+
+	if err := m.saveVMConfig(name, config); err != nil {
+		return errors.OperationFailed("save VM configuration", err)
+	}
+
+	log.Info().Str("name", name).Str("vagrantfile", vagrantfilePath).
+		Msg("VM registered with existing Vagrantfile")
 	return nil
 }
 
@@ -96,9 +148,15 @@ func (m *Manager) StopVM(ctx context.Context, name string) error {
 	return nil
 }
 
-// DestroyVM destroys the specified VM and cleans up resources
+// DestroyVM destroys the specified VM and cleans up resources.
+// For VMs with existing Vagrantfiles, only the MCP config is removed (not the project Vagrantfile).
 func (m *Manager) DestroyVM(ctx context.Context, name string) error {
 	vmDir := m.getVMDir(name)
+
+	// Check if this is an existing-Vagrantfile VM
+	config, configErr := m.loadVMConfig(name)
+	isExistingVagrantfile := configErr == nil && config.VagrantfilePath != ""
+
 	cmd := exec.CommandContext(ctx, "vagrant", "destroy", "-f")
 	cmd.Dir = vmDir
 	output, err := cmd.CombinedOutput()
@@ -106,9 +164,14 @@ func (m *Manager) DestroyVM(ctx context.Context, name string) error {
 		log.Error().Str("name", name).Err(err).Str("output", string(output)).Msg("Failed to destroy VM")
 		// Continue with cleanup even if destroy fails
 	}
-	if err := os.RemoveAll(vmDir); err != nil {
-		return errors.OperationFailed("clean up VM directory", err)
+
+	// Only remove the VM directory for managed VMs (not existing Vagrantfile VMs)
+	if !isExistingVagrantfile {
+		if err := os.RemoveAll(vmDir); err != nil {
+			return errors.OperationFailed("clean up VM directory", err)
+		}
 	}
+
 	configFile := filepath.Join(filepath.Dir(m.baseDir), fmt.Sprintf("%s.json", name))
 	if err := os.Remove(configFile); err != nil && !os.IsNotExist(err) {
 		return errors.OperationFailed("clean up VM config", err)
@@ -174,9 +237,29 @@ func (m *Manager) Close() {
 	// Nothing to clean up currently
 }
 
-// getVMDir returns the directory path for a VM
+// getVMDir returns the directory path for a VM.
+// For VMs with existing Vagrantfiles, this returns the project directory.
+// For generated VMs, this returns the managed VM directory.
 func (m *Manager) getVMDir(name string) string {
+	config, err := m.loadVMConfig(name)
+	if err == nil && config.VagrantfilePath != "" {
+		return filepath.Dir(config.VagrantfilePath)
+	}
 	return filepath.Join(m.baseDir, name)
+}
+
+// loadVMConfig reads the VM configuration from disk.
+func (m *Manager) loadVMConfig(name string) (core.VMConfig, error) {
+	configFile := filepath.Join(filepath.Dir(m.baseDir), fmt.Sprintf("%s.json", name))
+	data, err := os.ReadFile(configFile)
+	if err != nil {
+		return core.VMConfig{}, err
+	}
+	var config core.VMConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return core.VMConfig{}, err
+	}
+	return config, nil
 }
 
 // saveVMConfig saves the VM configuration to a file
@@ -197,6 +280,13 @@ func (m *Manager) saveVMConfig(name string, config core.VMConfig) error {
 
 // generateVagrantfile creates a Vagrantfile for the VM and validates it
 func (m *Manager) generateVagrantfile(name string, config core.VMConfig) error {
+	provider := config.Provider
+	if provider == "" {
+		provider = m.provider
+	}
+
+	providerConfig := m.generateProviderConfig(name, provider, config)
+
 	vagrantfile := `# -*- mode: ruby -*-
 # vi: set ft=ruby :
 # Generated by Vagrant MCP Server
@@ -204,31 +294,21 @@ func (m *Manager) generateVagrantfile(name string, config core.VMConfig) error {
 Vagrant.configure("2") do |config|
   # Box settings
   config.vm.box = "%s"
-  
+
   # Provider-specific configuration
-  config.vm.provider "virtualbox" do |vb|
-    vb.gui = false
-    vb.name = "%s"
-    vb.memory = %d
-    vb.cpus = %d
-    
-    # Performance optimizations
-    vb.customize ["modifyvm", :id, "--natdnshostresolver1", "on"]
-    vb.customize ["modifyvm", :id, "--natdnsproxy1", "on"]
-    vb.customize ["modifyvm", :id, "--ioapic", "on"]
-  end
+%s
 
   # Network settings
 %s
-  
+
   # Sync settings
 %s
-  
+
   # Provisioning
   config.vm.provision "shell", inline: <<-SHELL
     # Update package list
     apt-get update
-    
+
     # Install basic development tools
     apt-get install -y build-essential curl git unzip
 %s
@@ -247,17 +327,17 @@ end`
 	syncConfig := ""
 	switch config.SyncType {
 	case "rsync":
-		syncConfig = fmt.Sprintf(`  config.vm.synced_folder "%s", "/vagrant", 
+		syncConfig = fmt.Sprintf(`  config.vm.synced_folder "%s", "/vagrant",
     type: "rsync",
     rsync__exclude: [".git/", "node_modules/", "dist/", ".vagrant/"],
     rsync__args: ["--verbose", "--archive", "--delete", "-z"]`, config.ProjectPath)
 	case "nfs":
-		syncConfig = fmt.Sprintf(`  config.vm.synced_folder "%s", "/vagrant", 
+		syncConfig = fmt.Sprintf(`  config.vm.synced_folder "%s", "/vagrant",
     type: "nfs",
     nfs_udp: false,
     nfs_version: 4`, config.ProjectPath)
 	case "smb":
-		syncConfig = fmt.Sprintf(`  config.vm.synced_folder "%s", "/vagrant", 
+		syncConfig = fmt.Sprintf(`  config.vm.synced_folder "%s", "/vagrant",
     type: "smb"`, config.ProjectPath)
 	default:
 		syncConfig = fmt.Sprintf(`  config.vm.synced_folder "%s", "/vagrant"`, config.ProjectPath)
@@ -271,13 +351,11 @@ end`
 
 	// Format the complete Vagrantfile
 	content := fmt.Sprintf(vagrantfile,
-		config.Box,    // Box name
-		name,          // VM name
-		config.Memory, // Memory
-		config.CPU,    // CPU
-		portsConfig,   // Port forwarding
-		syncConfig,    // Sync configuration
-		envSetup)      // Environment setup
+		config.Box,     // Box name
+		providerConfig, // Provider config block
+		portsConfig,    // Port forwarding
+		syncConfig,     // Sync configuration
+		envSetup)       // Environment setup
 
 	// Write the Vagrantfile
 	vmDir := m.getVMDir(name)
@@ -292,7 +370,14 @@ end`
 		return nil
 	}
 
-	// Always validate the Vagrantfile to ensure it's correct
+	// Skip validation for sync types that require unavailable infrastructure
+	if config.SyncType == "nfs" || config.SyncType == "smb" {
+		log.Info().Str("name", name).Str("sync_type", config.SyncType).
+			Msg("Skipping validation for sync type that may require unavailable infrastructure")
+		return nil
+	}
+
+	// Validate the Vagrantfile to ensure it's correct
 	cmd := exec.Command("vagrant", "validate")
 	cmd.Dir = vmDir
 	output, err := cmd.CombinedOutput()
@@ -302,6 +387,45 @@ end`
 	log.Info().Str("name", name).Msg("Vagrantfile validated successfully")
 
 	return nil
+}
+
+// generateProviderConfig generates the provider-specific Ruby block for the Vagrantfile
+func (m *Manager) generateProviderConfig(name, provider string, config core.VMConfig) string {
+	switch provider {
+	case "libvirt":
+		return fmt.Sprintf(`  config.vm.provider "libvirt" do |lv|
+    lv.memory = %d
+    lv.cpus = %d
+    lv.random_hostname = true
+  end`, config.Memory, config.CPU)
+	case "virtualbox":
+		return fmt.Sprintf(`  config.vm.provider "virtualbox" do |vb|
+    vb.gui = false
+    vb.name = "%s"
+    vb.memory = %d
+    vb.cpus = %d
+
+    # Performance optimizations
+    vb.customize ["modifyvm", :id, "--natdnshostresolver1", "on"]
+    vb.customize ["modifyvm", :id, "--natdnsproxy1", "on"]
+    vb.customize ["modifyvm", :id, "--ioapic", "on"]
+  end`, name, config.Memory, config.CPU)
+	case "vmware_desktop", "vmware_fusion":
+		return fmt.Sprintf(`  config.vm.provider "vmware_desktop" do |v|
+    v.memory = %d
+    v.cpus = %d
+  end`, config.Memory, config.CPU)
+	case "hyperv":
+		return fmt.Sprintf(`  config.vm.provider "hyperv" do |h|
+    h.memory = %d
+    h.cpus = %d
+  end`, config.Memory, config.CPU)
+	default:
+		return fmt.Sprintf(`  config.vm.provider "%s" do |p|
+    p.memory = %d
+    p.cpus = %d
+  end`, provider, config.Memory, config.CPU)
+	}
 }
 
 // shouldSkipProviderValidation determines if provider-dependent operations should be skipped
@@ -321,6 +445,56 @@ func (m *Manager) shouldSkipProviderValidation() bool {
 		return true
 	}
 
+	// Skip if the configured provider plugin is not installed
+	if !m.isProviderAvailable(m.provider) {
+		log.Warn().Str("provider", m.provider).
+			Msg("Provider not available, skipping validation")
+		return true
+	}
+
+	return false
+}
+
+// isProviderAvailable checks if a Vagrant provider plugin is installed
+func (m *Manager) isProviderAvailable(provider string) bool {
+	cmd := exec.Command("vagrant", "plugin", "list")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return false
+	}
+	// Check for built-in providers (virtualbox, libvirt via vagrant-libvirt)
+	// and plugin-based providers
+	outputStr := string(output)
+	switch provider {
+	case "virtualbox":
+		// VirtualBox is a built-in provider, check if VBoxManage is available
+		if _, err := exec.LookPath("VBoxManage"); err == nil {
+			return true
+		}
+	case "libvirt":
+		// Check for vagrant-libvirt plugin
+		if contains(outputStr, "vagrant-libvirt") {
+			return true
+		}
+	default:
+		// For other providers, check plugin list
+		if contains(outputStr, provider) {
+			return true
+		}
+	}
+	return false
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
 	return false
 }
 
